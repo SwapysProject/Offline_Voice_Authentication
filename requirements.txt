@@ -1,0 +1,9 @@
+numpy
+scipy
+sounddevice
+wave
+resemblyzer
+librosa 
+torch    
+torchaudio 
+noisereduce
