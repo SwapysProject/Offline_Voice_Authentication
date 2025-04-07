@@ -11,7 +11,7 @@ This project implements a basic voice authentication system in Python that opera
 2.  **Registration (`register.py`):**
     *   The user provides a username.
     *   The script checks if the username already exists in the database. If so, it prompts for overwrite confirmation.
-    *   The user is prompted to speak a fixed passphrase ("My voice is my password, verify me.").
+    *   The user is prompted to speak a fixed passphrase ("Hey there Siri, its me, wake up").
     *   A short audio clip (e.g., 5 seconds) is recorded using `sounddevice` and saved as a float32 NumPy array. An original WAV file backup is also saved in `recordings/`.
     *   Basic **noise reduction** (spectral gating via `noisereduce` library) is applied to the recorded audio data.
     *   `resemblyzer` is used to extract a speaker embedding (a vector representing the voice characteristics) from the *noise-reduced* audio. This embedding is the "voiceprint".
