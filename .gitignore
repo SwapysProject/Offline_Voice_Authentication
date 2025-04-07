@@ -2,5 +2,4 @@ venv/
 /tutorial.mp4
 __pycache__/
 recordings/
-db_utils.py
 voice_auth.db
