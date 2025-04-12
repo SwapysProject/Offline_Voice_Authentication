@@ -13,7 +13,6 @@ This project implements a basic voice authentication system in Python that opera
     *   The script checks if the username already exists in the database. If so, it prompts for overwrite confirmation.
     *   The user is prompted to speak a **fixed, phonetically rich passphrase** (e.g., "The quick brown fox...") **multiple times** (default: 3).
     *   Each recording (default: 10 seconds) is saved as a WAV file backup in `recordings/`.
-    *   **No noise reduction** is applied in the current configuration.
     *   `resemblyzer` (`preprocess_wav` and `embed_utterance`) extracts a speaker embedding (voiceprint) from each valid recording.
     *   These multiple embeddings are **averaged** to create a more stable reference voiceprint for the user.
     *   The averaged voiceprint (NumPy array converted to BLOB) and timestamp are saved into the `users` table in `voice_auth_resemblyzer.db`.
@@ -24,7 +23,6 @@ This project implements a basic voice authentication system in Python that opera
     *   The BLOB is converted back into a NumPy array.
     *   The user is given a **generic prompt** to speak clearly for the set duration (e.g., 10 seconds). While any speech can be used, using the * via unique usernames (primary key) in the SQLite database.
 *   **Database Storage:** Uses SQLite (`voice_auth_resemblyzer.db`) for storing voiceprints.
-*   **Noise Reduction (Disabled):** Code structure includes points for noise reduction, but it's currently disabled as tests indicated it harmed speaker discrimination with Resemblyzer in this setup. Can be re-enabled for testing.
 *   **Silence Detection:** Includes an RMS energy check on the recorded audio file to fail authentication if the input signal is too quiet.
 *   **Liveness Detection (Placeholder):** Includes a placeholder function where liveness detection logic would reside. **WARNING: Does not provide actual anti-spoofing.**
 *   **Confidence Score:** Displays the calculated cosine similarity score.
@@ -43,7 +41,6 @@ This project implements a basic voice authentication system in Python that opera
     *   `librosa`
     *   `torch` (CPU version is sufficient)
     *   `torchaudio`
-    *   `noisereduce` *(Optional, only needed if re-enabled in code)*
 *   **PortAudio:** A cross-platform audio I/O library required by `sounddevice`.
 
 ## Installation
@@ -92,7 +89,6 @@ This project implements a basic voice authentication system in Python that opera
 3.  **Resemblyzer `preprocess_wav`:** Reads audio from file path, performs internal processing (likely VAD, resampling).
 4.  **Resemblyzer `embed_utterance`:** Generates embedding from preprocessed audio data.
 5.  **Averaging (Registration):** Embeddings from multiple recordings are averaged.
-6.  **Noise Reduction:** Currently **DISABLED** in both registration and authentication pipelines.
 
 ## Performance Observations & Tuning
 
@@ -101,7 +97,6 @@ This project implements a basic voice authentication system in Python that opera
 *   **Longer Duration:** 10 seconds provides more data for embedding generation, potentially improving stability.
 *   **Energy Threshold (`MIN_RMS_ENERGY`):** Prevents authentication on silence. Tune if it incorrectly rejects quiet speech or accepts background noise.
 *   **Passphrase (Registration):** Using a phonetically rich phrase during multi-sample registration might help capture more voice characteristics. Authentication can be attempted with any phrase.
-*   **Noise Reduction (Disabled):** Disabling this step appeared to *increase* the score gap between genuine and imposter users in testing with Resemblyzer for this specific setup, suggesting it was removing discriminative features. Re-enabling it would require careful re-tuning of the similarity threshold and re-evaluation.
 *   **Speaker Distinguishability:** This remains the hardest challenge. Even with enhancements, Resemblyzer may struggle with very similar voices. The observed gap between genuine and imposter scores dictates the system's practical security.
 
 
@@ -113,7 +108,6 @@ This project implements a basic voice authentication system in Python that opera
 *   **Basic CLI:** Simple command-line interface.
 *   **Multi-user Support:** Managed via unique usernames in the database.
 *   **Database Storage:** Uses SQLite (`voice_auth_resemblyzer.db`) for storing voiceprints (256-dim float64).
-*   **Noise Reduction (Disabled):** Code includes hooks for `noisereduce`, but it's bypassed in the current version based on testing showing better speaker discrimination without it. Can be re-enabled.
 *   **Silence Detection:** Includes an RMS energy check (reading from file) to fail authentication on quiet input.
 *   **Liveness Detection (Placeholder):** Includes a non-functional placeholder.
 *   **Confidence Score:** Displays the calculated cosine similarity score.
@@ -175,9 +169,8 @@ Relies on the locally cached Resemblyzer model, standard Python libraries (`sqli
 ## Preprocessing Steps
 
 1.  **Audio Recording:** Captured via `sounddevice`, saved as WAV.
-2.  **Noise Reduction:** **Currently disabled/bypassed.**
-3.  **Energy Check (Authentication):** RMS calculated from the WAV file; fails if below threshold.
-4.  **Resemblyzer `preprocess_wav`:** Handles reading audio, performs Voice Activity Detection (VAD), and ensures correct internal sample rate.
-5.  **Resemblyzer `embed_utterance`:** Generates the speaker embedding from the preprocessed audio.
-6.  **Averaging (Registration):** Embeddings from multiple samples are averaged.
+2.  **Energy Check (Authentication):** RMS calculated from the WAV file; fails if below threshold.
+3.  **Resemblyzer `preprocess_wav`:** Handles reading audio, performs Voice Activity Detection (VAD), and ensures correct internal sample rate.
+4.  **Resemblyzer `embed_utterance`:** Generates the speaker embedding from the preprocessed audio.
+5.  **Averaging (Registration):** Embeddings from multiple samples are averaged.
 
