@@ -104,17 +104,6 @@ This project implements a basic voice authentication system in Python that opera
 *   **Noise Reduction (Disabled):** Disabling this step appeared to *increase* the score gap between genuine and imposter users in testing with Resemblyzer for this specific setup, suggesting it was removing discriminative features. Re-enabling it would require careful re-tuning of the similarity threshold and re-evaluation.
 *   **Speaker Distinguishability:** This remains the hardest challenge. Even with enhancements, Resemblyzer may struggle with very similar voices. The observed gap between genuine and imposter scores dictates the system's practical security.
 
-## Limitations & Potential Improvements
-
-same passphrase as registration* generally yields more consistent results with Resemblyzer.
-    *   A new audio clip is recorded and saved as a WAV backup.
-    *   A **placeholder Liveness Check** is performed. **WARNING:** This provides no real anti-spoofing.
-    *   **No noise reduction** is applied in the current configuration.
-    *   An **Energy Check** (RMS) is performed by reading the saved WAV file. If energy is below `MIN_RMS_ENERGY`, authentication fails.
-    *   If the energy check passes, `resemblyzer` extracts an embedding from the authentication audio file.
-    *   The system calculates the **cosine similarity** between the stored (averaged) voiceprint and the newly generated embedding.
-    *   The result is displayed, including the numerical similarity score and a text-based visualization bar.
-    *   If the similarity score exceeds a predefined `SIMILARITY_THRESHOLD` (default: 0.70, **requires tuning**), authentication is successful; otherwise, it fails.
 
 ## Features
 
@@ -192,10 +181,3 @@ Relies on the locally cached Resemblyzer model, standard Python libraries (`sqli
 5.  **Resemblyzer `embed_utterance`:** Generates the speaker embedding from the preprocessed audio.
 6.  **Averaging (Registration):** Embeddings from multiple samples are averaged.
 
-## Performance*   **Liveness Detection:** **CRITICAL LIMITATION.** The placeholder provides no real anti-spoofing capability.
-*   **Discrimination Power:** Resemblyzer, even enhanced, might not provide sufficient separation between similar voices compared to state-of-the-art models (like those in SpeechBrain/Pyannote). The achievable security depends heavily on the tested score gap.
-*   **Noise Robustness:** Without active noise reduction, performance will degrade significantly in noisy environments. Re-enabling `noisereduce` might help with *some* noise types but requires careful testing as it previously harmed discrimination.
-*   **Security:** This is a demonstration. Real-world use needs more rigorous FAR/FRR analysis, potential use of score normalization techniques, and hardening.
-*   **Visualization:** Text bar is basic.
-*   **Error Handling:** Could be more specific.
-*   **Database Schema:** Assumes fixed embedding dimension.
