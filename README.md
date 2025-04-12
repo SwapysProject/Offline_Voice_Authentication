@@ -11,7 +11,7 @@ This project implements a basic voice authentication system in Python that opera
 2.  **Registration (`register.py`):**
     *   The user provides a username.
     *   The script checks if the username already exists in the database. If so, it prompts for overwrite confirmation.
-    *   The user is prompted to speak a fixed passphrase ("My voice is my password, verify me.").
+    *   The user is prompted to speak a fixed passphrase ("Hey there Siri, its me, wake up").
     *   A short audio clip (e.g., 5 seconds) is recorded using `sounddevice` and saved as a float32 NumPy array. An original WAV file backup is also saved in `recordings/`.
     *   Basic **noise reduction** (spectral gating via `noisereduce` library) is applied to the recorded audio data.
     *   `resemblyzer` is used to extract a speaker embedding (a vector representing the voice characteristics) from the *noise-reduced* audio. This embedding is the "voiceprint".
@@ -124,12 +124,4 @@ This project implements a basic voice authentication system in Python that opera
 *   **Microphone Consistency:** Use the same mic for registration and authentication if possible.
 *   **Speaker Distinguishability:** Should reliably reject different speakers, but very similar voices might require a higher threshold. Test this thoroughly!
 
-## Limitations & Potential Improvements
 
-*   **Liveness Detection:** **THIS IS THE MOST SIGNIFICANT LIMITATION.** The placeholder provides no real anti-spoofing capability against recorded playback. Robust offline liveness detection is a major challenge.
-*   **Noise Robustness:** Basic noise reduction helps but isn't perfect. Performance degrades in highly noisy/dynamic environments. Advanced techniques exist but add complexity.
-*   **Security:** This is a demonstration. Real-world systems need rigorous analysis (EER, DET curves), hardening against various attacks, and secure key management if integrated into larger systems.
-*   **Visualization:** Text bar is basic. GUI libraries (Tkinter, PyQt, etc.) could offer better plots.
-*   **Error Handling:** Could be more granular (e.g., specific mic access errors).
-*   **Database Schema Evolution:** Changes to embedding format require manual database updates or migration scripts (not included).
-*   **C++ Implementation:** A C++ version (bonus point) requires significantly different libraries and model handling.
