@@ -4,26 +4,28 @@ import numpy as np
 from datetime import datetime
 import os
 
-DB_FILE = "voice_auth.db"
-# Resemblyzer embeddings are typically float64
-# If you encounter issues, double-check the dtype of your embeddings
-EXPECTED_EMBEDDING_DTYPE = np.float64
-# Determine the size in bytes for validation
-# Use a dummy array to get the size reliably
-_dummy_embedding = np.zeros(256, dtype=EXPECTED_EMBEDDING_DTYPE) # Assuming 256 dimensions from Resemblyzer
+DB_FILE = "voice_auth_resemblyzer.db" # Use a new DB file name
+EXPECTED_EMBEDDING_DTYPE = np.float64 # Resemblyzer often outputs float64
+EMBEDDING_DIM = 256 # Resemblyzer default
+
+# Recalculate expected blob size
+_dummy_embedding = np.zeros(EMBEDDING_DIM, dtype=EXPECTED_EMBEDDING_DTYPE)
 EXPECTED_BLOB_SIZE = len(_dummy_embedding.tobytes())
+print(f"DEBUG DB_UTILS: Expected embedding dim: {EMBEDDING_DIM}, dtype: {EXPECTED_EMBEDDING_DTYPE}, blob size: {EXPECTED_BLOB_SIZE}")
 
-
+# --- Function Definition Added ---
 def connect_db():
     """Connects to the SQLite database."""
     conn = sqlite3.connect(DB_FILE)
     # Optional: Enable foreign key constraints if you add related tables later
     # conn.execute("PRAGMA foreign_keys = ON;")
     return conn
+# --- End Function Definition Added ---
 
 def init_db():
     """Initializes the database table if it doesn't exist."""
     try:
+        # Now connect_db() is defined and can be called
         with connect_db() as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -37,9 +39,7 @@ def init_db():
             print(f"Database '{DB_FILE}' initialized successfully.")
     except sqlite3.Error as e:
         print(f"Database Error during initialization: {e}")
-        # Depending on severity, you might want to exit
-        # exit(1)
-
+        exit(1)
 
 def check_user_exists(username):
     """Checks if a username already exists in the database."""
@@ -50,31 +50,26 @@ def check_user_exists(username):
             return cursor.fetchone() is not None
     except sqlite3.Error as e:
         print(f"Database Error checking user existence: {e}")
-        return False # Assume not exists on error to be safe, or handle differently
+        return False
 
 def save_voiceprint_db(username, embedding):
     """Saves or replaces the voiceprint for a user in the database."""
-    if not isinstance(embedding, np.ndarray) or embedding.dtype != EXPECTED_EMBEDDING_DTYPE:
-        print(f"Error: Embedding must be a NumPy array with dtype {EXPECTED_EMBEDDING_DTYPE}")
-        return False
-
+    if not isinstance(embedding, np.ndarray): return False
+    if embedding.dtype != EXPECTED_EMBEDDING_DTYPE:
+        embedding = embedding.astype(EXPECTED_EMBEDDING_DTYPE)
+    if embedding.ndim != 1 or embedding.shape[0] != EMBEDDING_DIM: return False
     embedding_blob = embedding.tobytes()
-    if len(embedding_blob) != EXPECTED_BLOB_SIZE:
-         print(f"Error: Embedding blob size mismatch. Expected {EXPECTED_BLOB_SIZE}, got {len(embedding_blob)}. Check embedding dimension/dtype.")
-         return False
-
+    if len(embedding_blob) != EXPECTED_BLOB_SIZE: return False
     registration_time = datetime.now().isoformat()
-
     try:
         with connect_db() as conn:
             cursor = conn.cursor()
-            # Use INSERT OR REPLACE to handle both new users and updates (overwrites)
             cursor.execute("""
                 INSERT OR REPLACE INTO users (username, voiceprint, registration_date)
                 VALUES (?, ?, ?)
             """, (username, embedding_blob, registration_time))
             conn.commit()
-            print(f"Voiceprint for '{username}' saved to database.")
+            print(f"Voiceprint for '{username}' saved to database '{DB_FILE}'.")
             return True
     except sqlite3.Error as e:
         print(f"Database Error saving voiceprint for '{username}': {e}")
@@ -87,27 +82,22 @@ def load_voiceprint_db(username):
             cursor = conn.cursor()
             cursor.execute("SELECT voiceprint FROM users WHERE username = ?", (username,))
             result = cursor.fetchone()
-
             if result:
                 voiceprint_blob = result[0]
-                if len(voiceprint_blob) != EXPECTED_BLOB_SIZE:
-                     print(f"Error: Loaded voiceprint blob size mismatch for '{username}'. Expected {EXPECTED_BLOB_SIZE}, got {len(voiceprint_blob)}. Data might be corrupted or saved with wrong format.")
-                     return None
-
-                # Convert blob back to NumPy array
+                if len(voiceprint_blob) != EXPECTED_BLOB_SIZE: return None
                 embedding = np.frombuffer(voiceprint_blob, dtype=EXPECTED_EMBEDDING_DTYPE)
+                if embedding.shape[0] != EMBEDDING_DIM: return None
                 print(f"Voiceprint loaded for '{username}' from database.")
                 return embedding
             else:
-                print(f"Error: No voiceprint found in database for username '{username}'. Please register first.")
+                print(f"Error: No voiceprint found for '{username}'.")
                 return None
     except sqlite3.Error as e:
         print(f"Database Error loading voiceprint for '{username}': {e}")
         return None
     except Exception as e:
-        # Catch potential numpy errors during conversion
         print(f"Error converting blob to numpy array for '{username}': {e}")
         return None
 
-# Call init_db() when this module is imported to ensure DB exists
+# Initialize DB on import
 init_db()

@@ -1,145 +1,156 @@
+# register.py
 import sounddevice as sd
 import numpy as np
 import wave
 import os
-from resemblyzer import preprocess_wav, VoiceEncoder
+from resemblyzer import VoiceEncoder, preprocess_wav # Use resemblyzer imports
 from pathlib import Path
 import time
 from db_utils import check_user_exists, save_voiceprint_db, EXPECTED_EMBEDDING_DTYPE
-import noisereduce as nr
+# import noisereduce as nr # Noise reduction disabled
 
+# --- Configuration ---
 RECORDING_DIR = "recordings"
-DURATION = 5
-SAMPLE_RATE = 16000
-PASSPHRASE = "Hey there Siri, its me, wake up"
-
+DURATION = 10 # Increased duration
+SAMPLE_RATE = 16000 # Resemblyzer preferred rate
+PASSPHRASE = "The quick brown fox jumps over the lazy dog" # Phonetically rich
+NUM_ENROLL_SAMPLES = 3
+# --- End Configuration ---
 
 os.makedirs(RECORDING_DIR, exist_ok=True)
 
+# Initialize Resemblyzer VoiceEncoder
 try:
+    # Optionally specify device 'cpu' if torch GPU issues arise
+    # encoder = VoiceEncoder(device='cpu')
     encoder = VoiceEncoder()
-    print("VoiceEncoder initialized.")
+    print("Resemblyzer VoiceEncoder initialized.")
 except Exception as e:
     print(f"Error initializing VoiceEncoder: {e}")
     exit()
 
-def record_audio(filename, duration, samplerate):
-    print(f"\nGet ready to speak the passphrase: '{PASSPHRASE}'")
-   
+def record_audio(filename, duration, samplerate, prompt):
+    """Records audio, saves WAV, returns float32 numpy array."""
+    print(f"\n{prompt}")
     print("Recording in 3..."); time.sleep(1)
     print("Recording in 2..."); time.sleep(1)
     print("Recording in 1..."); time.sleep(1)
     print("Recording...")
-
     try:
         recording_int16 = sd.rec(int(duration * samplerate), samplerate=samplerate, channels=1, dtype='int16')
         sd.wait()
         print("Recording finished.")
-
+        # Save backup WAV using the int16 data
         with wave.open(filename, 'wb') as wf:
             wf.setnchannels(1)
             wf.setsampwidth(2)
             wf.setframerate(samplerate)
             wf.writeframes(recording_int16.tobytes())
         print(f"Original recording saved to {filename}")
-        recording_float32 = recording_int16.astype(np.float32) / 32767.0
-
-        return recording_float32 
-
+        # Convert to float32 for potential processing (though Resemblyzer can take path)
+        # Resemblyzer's preprocess_wav works best with file paths
+        # Let's keep returning the path for Resemblyzer's preprocess_wav
+        # Return the filename instead of audio data
+        return filename
     except Exception as e:
         print(f"An error occurred during recording: {e}")
         return None
 
-def create_voiceprint(username, audio_data, samplerate):
-    if audio_data is None:
-        print("Error: Audio data is None.")
-        return None
+def create_single_voiceprint_resemblyzer(audio_filepath):
+    """Creates a single embedding using Resemblyzer from a file path."""
+    if audio_filepath is None: return None
 
     try:
-        if not isinstance(audio_data, np.ndarray):
-            audio_data = np.array(audio_data)
+        # --- Noise Reduction (DISABLED) ---
+        # If re-enabling, load audio, process with nr, save temp file, pass temp path
+        processed_audio_path = Path(audio_filepath)
+        # ----------------------------------
 
-        if audio_data.dtype != np.float32:
-            print(f"DEBUG: Converting audio data from {audio_data.dtype} to float32.")
-            audio_data = audio_data.astype(np.float32)
-
-        if audio_data.ndim > 1:
-            print(f"DEBUG: Reshaping audio data from {audio_data.shape} to 1D.")
-            audio_data = np.squeeze(audio_data) 
-
-        if audio_data.ndim != 1:
-            print(f"Error: Audio data is not 1D after processing (shape: {audio_data.shape}). Cannot apply noise reduction.")
+        if not processed_audio_path.exists():
+            print(f"Error: Audio file not found at {processed_audio_path}")
             return None
 
-        print(f"DEBUG: Input to noisereduce - Shape: {audio_data.shape}, Dtype: {audio_data.dtype}")
+        print("Preprocessing audio with Resemblyzer...")
+        # Use preprocess_wav which handles VAD and uses the internal sample rate
+        original_wav = preprocess_wav(processed_audio_path)
+        if original_wav is None or len(original_wav) < int(0.5 * SAMPLE_RATE): # Basic length check after VAD
+            print(f"Warning: Audio might be too short or silent after VAD for {audio_filepath}")
+            # Optional: return None if too short
 
-        print("Applying noise reduction...")
-        reduced_noise_audio = nr.reduce_noise(y=audio_data, sr=samplerate, stationary=False, prop_decrease=0.85)
-        print("Noise reduction applied.")
-        print(f"DEBUG: Output from noisereduce - Shape: {reduced_noise_audio.shape}, Dtype: {reduced_noise_audio.dtype}")
+        print("Creating embedding using Resemblyzer...")
+        # Generate embedding from the preprocessed wav
+        embedding = encoder.embed_utterance(original_wav)
 
-
-        if samplerate != 16000:
-             print(f"Warning: Resemblyzer expects 16kHz, but sample rate is {samplerate}. Ensure recording uses 16kHz.")
-
-        min_length_samples = int(0.5 * samplerate)
-        if len(reduced_noise_audio) < min_length_samples:
-            print(f"Warning: Audio for {username} might be too short after noise reduction ({len(reduced_noise_audio)} samples).")
-
-        print("Creating embedding...")
-        embedding = encoder.embed_utterance(reduced_noise_audio)
-        embedding = embedding.astype(EXPECTED_EMBEDDING_DTYPE)
-        print(f"Voiceprint created for {username}.")
-        return embedding
-
-    except np.core._exceptions._ArrayMemoryError as mem_err:
-        print(f"\nCRITICAL ERROR: Memory allocation failed during noise reduction.")
-        print(f"  Error details: {mem_err}")
-        print(f"  This usually means the input audio format was unexpected or there's an issue in the 'noisereduce' library.")
-        print(f"  Input audio details just before error:")
-        print(f"      Shape: {audio_data.shape if 'audio_data' in locals() else 'N/A'}")
-        print(f"      Dtype: {audio_data.dtype if 'audio_data' in locals() else 'N/A'}")
-        print(f"  Consider simplifying noise reduction parameters or reporting the issue to the library authors.")
-        print(f"  Skipping noise reduction for this attempt might work, but is not ideal.")
-        return None
+        print(f"Embedding created (shape: {embedding.shape}, type: {embedding.dtype}).")
+        # Ensure correct dtype for DB
+        return embedding.astype(EXPECTED_EMBEDDING_DTYPE)
 
     except Exception as e:
-        print(f"Error creating voiceprint for {username}: {e}")
+        print(f"Error creating voiceprint: {e}")
         import traceback
         traceback.print_exc()
         return None
 
-
 if __name__ == "__main__":
-    print("--- Voice Registration ---")
+    print("--- Voice Registration (Resemblyzer - Multi-Sample) ---")
     while True:
         username = input("Enter username for registration: ").strip().lower()
-        if not username:
-            print("Username cannot be empty.")
+        if not username: print("Username cannot be empty.")
         elif check_user_exists(username):
-            overwrite = input(f"Username '{username}' already exists in database. Overwrite? (y/n): ").lower()
-            if overwrite == 'y':
-                break
-            else:
-                print("Please choose a different username.")
-        else:
-            break
+            overwrite = input(f"Username '{username}' already exists. Overwrite? (y/n): ").lower()
+            if overwrite == 'y': break
+            else: print("Please choose a different username.")
+        else: break
 
-    reg_audio_file_orig = os.path.join(RECORDING_DIR, f"{username}_reg_orig_{int(time.time())}.wav")
+    enroll_embeddings = []
+    print(f"\nNeed to record {NUM_ENROLL_SAMPLES} samples for enrollment.")
 
-    recorded_audio_data = record_audio(reg_audio_file_orig, DURATION, SAMPLE_RATE)
-    if recorded_audio_data is None:
-        print("Registration failed: Could not record audio.")
-        exit()
+    for i in range(NUM_ENROLL_SAMPLES):
+        print("-" * 20)
+        print(f"Recording sample {i+1}/{NUM_ENROLL_SAMPLES}...")
+        prompt = f"Sample {i+1}/{NUM_ENROLL_SAMPLES}: Please say '{PASSPHRASE}' clearly."
+        # Generate filename for this specific sample
+        reg_audio_filepath = os.path.join(RECORDING_DIR, f"{username}_reg_{i+1}_{int(time.time())}.wav")
 
-    voiceprint = create_voiceprint(username, recorded_audio_data, SAMPLE_RATE)
+        # Record audio, get filepath back
+        audio_path = record_audio(reg_audio_filepath, DURATION, SAMPLE_RATE, prompt)
+        if audio_path is None:
+            print(f"Registration failed: Could not record audio for sample {i+1}.")
+            exit()
 
-    if voiceprint is None:
-        print("Registration failed: Could not create voiceprint (check audio quality/length, noise reduction).")
-        exit()
+        # Create embedding for this sample using the filepath
+        voiceprint_sample = create_single_voiceprint_resemblyzer(audio_path)
+        if voiceprint_sample is None:
+            print(f"Registration failed: Could not create voiceprint for sample {i+1}.")
+            # Optional: clean up audio file
+            # try: os.remove(audio_path)
+            # except OSError: pass
+            exit()
 
-    if not save_voiceprint_db(username, voiceprint):
-        print("Registration failed: Could not save voiceprint to database.")
+        enroll_embeddings.append(voiceprint_sample)
+        print(f"Sample {i+1} processed.")
+        if i < NUM_ENROLL_SAMPLES - 1: time.sleep(1)
+
+        # Optional: Clean up the individual recording WAV file after processing
+        # try: os.remove(audio_path)
+        # except OSError as e: print(f"Warning: Could not remove temp file {audio_path}: {e}")
+
+    if len(enroll_embeddings) != NUM_ENROLL_SAMPLES:
+         print(f"Error: Did not collect enough enrollment samples. Aborting.")
+         exit()
+
+    print("\nAveraging enrollment embeddings...")
+    try:
+        averaged_voiceprint = np.mean(np.stack(enroll_embeddings), axis=0)
+        averaged_voiceprint = averaged_voiceprint.astype(EXPECTED_EMBEDDING_DTYPE)
+        print(f"Averaged voiceprint calculated (shape: {averaged_voiceprint.shape}, type: {averaged_voiceprint.dtype}).")
+    except Exception as e:
+         print(f"Error averaging embeddings: {e}")
+         exit()
+
+    if not save_voiceprint_db(username, averaged_voiceprint):
+        print("Registration failed: Could not save averaged voiceprint to database.")
         exit()
 
     print(f"\nRegistration successful for user: {username}")
+    print(f"(Averaged from {NUM_ENROLL_SAMPLES} samples)")
